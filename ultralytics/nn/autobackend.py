@@ -94,7 +94,7 @@ class AutoBackend(nn.Module):
         # Set device
         cuda = torch.cuda.is_available() and device.type != 'cpu'  # use CUDA
         xpu =  torch.xpu.is_available() and device.type == 'xpu:0' # use XPU           
-        cpu = (not torch.xpu.is_available() or not torch.cuda.is_available()) and device.type =='cpu':
+        cpu = not torch.xpu.is_available() and not torch.cuda.is_available() and device.type =='cpu':
                      
         if cuda and not any([nn_module, pt, jit, engine]):  # GPU dataloader formats
             device = torch.device('cpu')
