@@ -286,6 +286,7 @@ class BaseTrainer:
         # IPEX Optimizations
         if self.use_ipex 
             import intel_extension_for_pytorch as ipex
+            self.model.train()
             if self.amp:
                 self.model, self.optimizer = ipex.optimize(self.model, dtype=torch.bfloat16)
             else:
