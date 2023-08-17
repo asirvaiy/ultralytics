@@ -83,6 +83,8 @@ class BaseTrainer:
         self.args = get_cfg(cfg, overrides)
         self.check_resume(overrides)
         self.device = select_device(self.args.device, self.args.batch)
+        self.use_ipex = self.args.use_ipex
+        self.bf16 = self.args.bf16
         self.validator = None
         self.model = None
         self.metrics = None
@@ -232,7 +234,10 @@ class BaseTrainer:
 
         # Check AMP
         self.amp = torch.tensor(self.args.amp).to(self.device)  # True or False
-        if self.amp and RANK in (-1, 0):  # Single-GPU and DDP
+        self.cuda_amp = self.amp and torch.cuda.is_available() and device.type != 'cpu' 
+        self.xpu_amp = self.amp and torch.xpu.is_available() and device.type != 'cpu'
+        self.cpu_amp = self.amp and self.bf16 and not torch.xpu.is_available() and not torch.cuda.is_available() and device.type == 'cpu'
+        if self.amp and not self.bf16 and RANK in (-1, 0):  # Single-GPU and DDP
             callbacks_backup = callbacks.default_callbacks.copy()  # backup callbacks as check_amp() resets them
             self.amp = torch.tensor(check_amp(self.model), device=self.device)
             callbacks.default_callbacks = callbacks_backup  # restore callbacks
@@ -277,6 +282,15 @@ class BaseTrainer:
                                               momentum=self.args.momentum,
                                               decay=weight_decay,
                                               iterations=iterations)
+
+        # IPEX Optimizations
+        if self.use_ipex 
+            import intel_extension_for_pytorch as ipex
+            if self.amp:
+                self.model, self.optimizer = ipex.optimize(self.model, dtype=torch.bfloat16)
+            else:
+                self.model, self.optimizer = ipex.optimize(self.model)
+        
         # Scheduler
         if self.args.cos_lr:
             self.lf = one_cycle(1, self.args.lrf, self.epochs)  # cosine 1->hyp['lrf']
@@ -346,7 +360,7 @@ class BaseTrainer:
                             x['momentum'] = np.interp(ni, xi, [self.args.warmup_momentum, self.args.momentum])
 
                 # Forward
-                with torch.cuda.amp.autocast(self.amp):
+                with torch.cuda.amp.autocast(enabled=self.cuda_amp), torch.cpu.amp.autocast(enabled=self.xpu_amp), torch.xpu.amp.autocast(enabled=self.cpu_amp):
                     batch = self.preprocess_batch(batch)
                     self.loss, self.loss_items = self.model(batch)
                     if RANK != -1:
