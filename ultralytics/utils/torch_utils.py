@@ -60,14 +60,15 @@ def get_cpu_info():
 
 
 def select_device(device='', batch=0, newline=False, verbose=True):
-    """Selects PyTorch Device. Options are device = None or 'cpu' or 0 or '0' or '0,1,2,3'."""
+    """Selects PyTorch Device. Options are device = None or 'cpu' or 'xpu' or 'xpu:0,1...' or 0 or '0' or '0,1,2,3'."""
     s = f'Ultralytics YOLOv{__version__} 🚀 Python-{platform.python_version()} torch-{torch.__version__} '
     device = str(device).lower()
     for remove in 'cuda:', 'none', '(', ')', '[', ']', "'", ' ':
         device = device.replace(remove, '')  # to string, 'cuda:0' -> '0' and '(0, 1)' -> '0,1'
     cpu = device == 'cpu'
     mps = device == 'mps'  # Apple Metal Performance Shaders (MPS)
-    if cpu or mps:
+    xpu = device.startswith('xpu')
+    if cpu or mps or xpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # force torch.cuda.is_available() = False
     elif device:  # non-cpu device requested
         if device == 'cuda':
@@ -86,7 +87,7 @@ def select_device(device='', batch=0, newline=False, verbose=True):
                              f"\nos.environ['CUDA_VISIBLE_DEVICES']: {visible}\n"
                              f'{install}')
 
-    if not cpu and not mps and torch.cuda.is_available():  # prefer GPU if available
+    if not cpu and not mps and not xpu and torch.cuda.is_available():  # prefer GPU if available
         devices = device.split(',') if device else '0'  # range(torch.cuda.device_count())  # i.e. 0,1,6,7
         n = len(devices)  # device count
         if n > 1 and batch > 0 and batch % n != 0:  # check batch_size is divisible by device_count
@@ -101,6 +102,9 @@ def select_device(device='', batch=0, newline=False, verbose=True):
         # Prefer MPS if available
         s += f'MPS ({get_cpu_info()})\n'
         arg = 'mps'
+    elif not cpu and not mps and torch.xpu.is_available():  # prefer GPU if available
+        s += 'XPU\n'
+        arg = 'xpu:0'    
     else:  # revert to CPU
         s += f'CPU ({get_cpu_info()})\n'
         arg = 'cpu'
