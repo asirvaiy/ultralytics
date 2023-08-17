@@ -46,6 +46,8 @@ class AutoBackend(nn.Module):
                  dnn=False,
                  data=None,
                  fp16=False,
+                 use_ipex=False, 
+                 bf16=False,
                  fuse=True,
                  verbose=True):
         """
@@ -58,6 +60,8 @@ class AutoBackend(nn.Module):
             data (str | Path | optional): Additional data.yaml file for class names.
             fp16 (bool): If True, use half precision. Default: False
             fuse (bool): Whether to fuse the model or not. Default: True
+            bf16 (bool): If True, use BF16 with AMP. Default: False
+            use_ipex (bool) : Use IPEX optimizations on Intel CPU/GPU. Default: False
             verbose (bool): Whether to run in verbose mode or not. Default: True
 
         Supported formats and their naming conventions:
@@ -89,6 +93,9 @@ class AutoBackend(nn.Module):
 
         # Set device
         cuda = torch.cuda.is_available() and device.type != 'cpu'  # use CUDA
+        xpu =  torch.xpu.is_available() and device.type == 'xpu:0' # use XPU           
+        cpu = (not torch.xpu.is_available() or not torch.cuda.is_available()) and device.type =='cpu':
+                     
         if cuda and not any([nn_module, pt, jit, engine]):  # GPU dataloader formats
             device = torch.device('cpu')
             cuda = False
@@ -108,6 +115,13 @@ class AutoBackend(nn.Module):
             model.half() if fp16 else model.float()
             self.model = model  # explicitly assign for to(), cpu(), cuda(), half()
             pt = True
+            if use_ipex:
+              self.model.eval()
+              import intel_extension_for_pytorch as ipex
+              if bf16:
+                self.model = ipex.optimize(self.model, dtype=torch.bfloat16)
+              else:
+                self.model = ipex.optimize(self.model) 
         elif pt:  # PyTorch
             from ultralytics.nn.tasks import attempt_load_weights
             model = attempt_load_weights(weights if isinstance(weights, list) else w,
@@ -120,6 +134,13 @@ class AutoBackend(nn.Module):
             names = model.module.names if hasattr(model, 'module') else model.names  # get class names
             model.half() if fp16 else model.float()
             self.model = model  # explicitly assign for to(), cpu(), cuda(), half()
+            if use_ipex:
+              self.model.eval()
+              import intel_extension_for_pytorch as ipex
+              if bf16:
+                self.model = ipex.optimize(self.model, dtype=torch.bfloat16)
+              else:
+                self.model = ipex.optimize(self.model) 
         elif jit:  # TorchScript
             LOGGER.info(f'Loading {w} for TorchScript inference...')
             extra_files = {'config.txt': ''}  # model metadata
@@ -329,9 +350,10 @@ class AutoBackend(nn.Module):
             im = im.half()  # to FP16
         if self.nhwc:
             im = im.permute(0, 2, 3, 1)  # torch BCHW to numpy BHWC shape(1,320,192,3)
-
+            
         if self.pt or self.nn_module:  # PyTorch
-            y = self.model(im, augment=augment, visualize=visualize) if augment or visualize else self.model(im)
+            with torch.no_grad(), torch.xpu.amp.autocast(xpu and self.bf16 , dtype = torch.bfloat16) , torch.cpu.amp.autocast(cpu and self.bf16 , dtype = torch.bfloat16) :
+                y = self.model(im, augment=augment, visualize=visualize) if augment or visualize else self.model(im)
         elif self.jit:  # TorchScript
             y = self.model(im)
         elif self.dnn:  # ONNX OpenCV DNN
