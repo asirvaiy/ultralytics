@@ -93,8 +93,13 @@ class AutoBackend(nn.Module):
 
         # Set device
         cuda = torch.cuda.is_available() and device.type != 'cpu'  # use CUDA
-        self.xpu_amp =  self.bf16 and torch.xpu.is_available() and device.type == 'xpu:0' # use XPU           
-        self.cpu_amp = self.bf16 and not torch.xpu.is_available() and not torch.cuda.is_available() and device.type =='cpu':
+        try:
+            self.xpu_amp =  self.bf16 and torch.xpu.is_available() and device.type == 'xpu:0' # use XPU
+            self.cpu_amp = self.bf16 and device.type =='cpu':
+        except:
+            self.xpu_amp =  False
+            print("IPEX XPU is not available in your environment. Please install IPEX XPU to use Intel GPU")
+            self.cpu_amp = self.bf16 and device.type =='cpu':
                      
         if cuda and not any([nn_module, pt, jit, engine]):  # GPU dataloader formats
             device = torch.device('cpu')
