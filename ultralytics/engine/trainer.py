@@ -235,8 +235,12 @@ class BaseTrainer:
         # Check AMP
         self.amp = torch.tensor(self.args.amp).to(self.device)  # True or False
         self.cuda_amp = self.amp and torch.cuda.is_available() and device.type != 'cpu' 
-        self.xpu_amp = self.amp and torch.xpu.is_available() and device.type != 'cpu'
-        self.cpu_amp = self.amp and self.bf16 and not torch.xpu.is_available() and not torch.cuda.is_available() and device.type == 'cpu'
+        try:
+            self.xpu_amp = self.amp and torch.xpu.is_available() and device.type != 'cpu'
+            self.cpu_amp = self.amp and self.bf16 and device.type == 'cpu'
+        except:
+            self.xpu_amp = False
+            self.cpu_amp = self.amp and self.bf16 and device.type == 'cpu'            
         if self.amp and not self.bf16 and RANK in (-1, 0):  # Single-GPU and DDP
             callbacks_backup = callbacks.default_callbacks.copy()  # backup callbacks as check_amp() resets them
             self.amp = torch.tensor(check_amp(self.model), device=self.device)
@@ -284,7 +288,7 @@ class BaseTrainer:
                                               iterations=iterations)
 
         # IPEX Optimizations
-        if self.use_ipex 
+        if self.use_ipex: 
             import intel_extension_for_pytorch as ipex
             self.model.train()
             if self.amp:
