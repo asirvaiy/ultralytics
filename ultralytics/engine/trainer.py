@@ -292,9 +292,9 @@ class BaseTrainer:
             import intel_extension_for_pytorch as ipex
             self.model.train()
             if self.amp:
-                self.model, self.optimizer = ipex.optimize(self.model, dtype=torch.bfloat16)
+                self.model, self.optimizer = ipex.optimize(model=self.model, optimizer=self.optimizer, dtype=torch.bfloat16)
             else:
-                self.model, self.optimizer = ipex.optimize(self.model)
+                self.model, self.optimizer = ipex.optimize(model=self.model, optimizer=self.optimizer)
         
         # Scheduler
         if self.args.cos_lr:
