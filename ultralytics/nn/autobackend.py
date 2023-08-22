@@ -94,7 +94,7 @@ class AutoBackend(nn.Module):
         # Set device
         cuda = torch.cuda.is_available() and device.type != 'cpu'  # use CUDA
         try:
-            self.xpu_amp =  bf16 and torch.xpu.is_available() and device.type == 'xpu:0' # use XPU
+            self.xpu_amp =  bf16 and torch.xpu.is_available() and device.type == 'xpu' # use XPU
             self.cpu_amp = bf16 and device.type =='cpu'
         except:
             self.xpu_amp =  False
