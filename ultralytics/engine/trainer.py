@@ -234,13 +234,13 @@ class BaseTrainer:
 
         # Check AMP
         self.amp = torch.tensor(self.args.amp).to(self.device)  # True or False
-        self.cuda_amp = self.amp and torch.cuda.is_available() and device.type != 'cpu' 
+        self.cuda_amp = self.amp and torch.cuda.is_available() and self.device.type != 'cpu' 
         try:
-            self.xpu_amp = self.amp and torch.xpu.is_available() and device.type != 'cpu'
-            self.cpu_amp = self.amp and self.bf16 and device.type == 'cpu'
+            self.xpu_amp = self.amp and torch.xpu.is_available() and self.device.type != 'cpu'
+            self.cpu_amp = self.amp and self.bf16 and self.device.type == 'cpu'
         except:
             self.xpu_amp = False
-            self.cpu_amp = self.amp and self.bf16 and device.type == 'cpu'            
+            self.cpu_amp = self.amp and self.bf16 and self.device.type == 'cpu'            
         if self.amp and not self.bf16 and RANK in (-1, 0):  # Single-GPU and DDP
             callbacks_backup = callbacks.default_callbacks.copy()  # backup callbacks as check_amp() resets them
             self.amp = torch.tensor(check_amp(self.model), device=self.device)
@@ -365,13 +365,22 @@ class BaseTrainer:
                             x['momentum'] = np.interp(ni, xi, [self.args.warmup_momentum, self.args.momentum])
 
                 # Forward
-                with torch.cuda.amp.autocast(enabled=self.cuda_amp), torch.cpu.amp.autocast(enabled=self.xpu_amp), torch.xpu.amp.autocast(enabled=self.cpu_amp):
-                    batch = self.preprocess_batch(batch)
-                    self.loss, self.loss_items = self.model(batch)
-                    if RANK != -1:
-                        self.loss *= world_size
-                    self.tloss = (self.tloss * i + self.loss_items) / (i + 1) if self.tloss is not None \
-                        else self.loss_items
+                if self.xpu_amp:
+                    with torch.xpu.amp.autocast(enabled=self.xpu_amp, dtype=torch.bfloat16):
+                        batch = self.preprocess_batch(batch)
+                        self.loss, self.loss_items = self.model(batch)
+                        if RANK != -1:
+                            self.loss *= world_size
+                        self.tloss = (self.tloss * i + self.loss_items) / (i + 1) if self.tloss is not None \
+                            else self.loss_items
+                else:
+                    with torch.cuda.amp.autocast(enabled=self.cuda_amp), torch.cpu.amp.autocast(enabled=self.cpu_amp):
+                        batch = self.preprocess_batch(batch)
+                        self.loss, self.loss_items = self.model(batch)
+                        if RANK != -1:
+                            self.loss *= world_size
+                        self.tloss = (self.tloss * i + self.loss_items) / (i + 1) if self.tloss is not None \
+                            else self.loss_items
 
                 # Backward
                 self.scaler.scale(self.loss).backward()
