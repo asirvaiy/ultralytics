@@ -94,12 +94,12 @@ class AutoBackend(nn.Module):
         # Set device
         cuda = torch.cuda.is_available() and device.type != 'cpu'  # use CUDA
         try:
-            self.xpu_amp =  self.bf16 and torch.xpu.is_available() and device.type == 'xpu:0' # use XPU
-            self.cpu_amp = self.bf16 and device.type =='cpu'
+            self.xpu_amp =  bf16 and torch.xpu.is_available() and device.type == 'xpu:0' # use XPU
+            self.cpu_amp = bf16 and device.type =='cpu'
         except:
             self.xpu_amp =  False
             print("IPEX XPU is not available in your environment. Please install IPEX XPU to use Intel GPU")
-            self.cpu_amp = self.bf16 and device.type =='cpu'
+            self.cpu_amp = bf16 and device.type =='cpu'
                      
         if cuda and not any([nn_module, pt, jit, engine]):  # GPU dataloader formats
             device = torch.device('cpu')
@@ -357,8 +357,12 @@ class AutoBackend(nn.Module):
             im = im.permute(0, 2, 3, 1)  # torch BCHW to numpy BHWC shape(1,320,192,3)
             
         if self.pt or self.nn_module:  # PyTorch
-            with torch.no_grad(), torch.xpu.amp.autocast(enabled=self.xpu_amp, dtype = torch.bfloat16) , torch.cpu.amp.autocast(enabled=self.cpu_amp, dtype = torch.bfloat16) :
+            if self.xpu_amp:
+              with torch.no_grad(), torch.xpu.amp.autocast(enabled=self.xpu_amp, dtype = torch.bfloat16):
                 y = self.model(im, augment=augment, visualize=visualize) if augment or visualize else self.model(im)
+            else:
+              with torch.no_grad(), torch.cpu.amp.autocast(enabled=self.cpu_amp, dtype = torch.bfloat16):
+                y = self.model(im, augment=augment, visualize=visualize) if augment or visualize else self.model(im)       
         elif self.jit:  # TorchScript
             y = self.model(im)
         elif self.dnn:  # ONNX OpenCV DNN
