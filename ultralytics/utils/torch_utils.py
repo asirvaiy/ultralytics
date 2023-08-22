@@ -86,28 +86,29 @@ def select_device(device='', batch=0, newline=False, verbose=True):
                              f'\ntorch.cuda.device_count(): {torch.cuda.device_count()}'
                              f"\nos.environ['CUDA_VISIBLE_DEVICES']: {visible}\n"
                              f'{install}')
-
-    if not cpu and not mps and not xpu and torch.cuda.is_available():  # prefer GPU if available
-        devices = device.split(',') if device else '0'  # range(torch.cuda.device_count())  # i.e. 0,1,6,7
-        n = len(devices)  # device count
-        if n > 1 and batch > 0 and batch % n != 0:  # check batch_size is divisible by device_count
-            raise ValueError(f"'batch={batch}' must be a multiple of GPU count {n}. Try 'batch={batch // n * n}' or "
-                             f"'batch={batch // n * n + n}', the nearest batch sizes evenly divisible by {n}.")
-        space = ' ' * (len(s) + 1)
-        for i, d in enumerate(devices):
-            p = torch.cuda.get_device_properties(i)
-            s += f"{'' if i == 0 else space}CUDA:{d} ({p.name}, {p.total_memory / (1 << 20):.0f}MiB)\n"  # bytes to MB
-        arg = 'cuda:0'
-    elif mps and getattr(torch, 'has_mps', False) and torch.backends.mps.is_available() and TORCH_2_0:
-        # Prefer MPS if available
-        s += f'MPS ({get_cpu_info()})\n'
-        arg = 'mps'
-    elif not cpu and not mps and torch.xpu.is_available():  # prefer GPU if available
-        s += 'XPU\n'
-        arg = 'xpu:0'    
-    else:  # revert to CPU
-        s += f'CPU ({get_cpu_info()})\n'
-        arg = 'cpu'
+    try: 
+        if not cpu and not mps and torch.xpu.is_available():  # prefer GPU if available
+          s += 'XPU\n'
+          arg = 'xpu:0'    
+    except:  
+        if not cpu and not mps and not xpu and torch.cuda.is_available():  # prefer GPU if available
+            devices = device.split(',') if device else '0'  # range(torch.cuda.device_count())  # i.e. 0,1,6,7
+            n = len(devices)  # device count
+            if n > 1 and batch > 0 and batch % n != 0:  # check batch_size is divisible by device_count
+                raise ValueError(f"'batch={batch}' must be a multiple of GPU count {n}. Try 'batch={batch // n * n}' or "
+                                 f"'batch={batch // n * n + n}', the nearest batch sizes evenly divisible by {n}.")
+            space = ' ' * (len(s) + 1)
+            for i, d in enumerate(devices):
+                p = torch.cuda.get_device_properties(i)
+                s += f"{'' if i == 0 else space}CUDA:{d} ({p.name}, {p.total_memory / (1 << 20):.0f}MiB)\n"  # bytes to MB
+            arg = 'cuda:0'
+        elif mps and getattr(torch, 'has_mps', False) and torch.backends.mps.is_available() and TORCH_2_0:
+            # Prefer MPS if available
+            s += f'MPS ({get_cpu_info()})\n'
+            arg = 'mps'
+        else:  # revert to CPU
+            s += f'CPU ({get_cpu_info()})\n'
+            arg = 'cpu'
 
     if verbose and RANK == -1:
         LOGGER.info(s if newline else s.rstrip())
