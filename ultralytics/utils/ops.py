@@ -31,6 +31,12 @@ class Profile(contextlib.ContextDecorator):
         """
         self.t = t
         self.cuda = torch.cuda.is_available()
+        self.xpu = False
+        try:
+          import intel_extension_for_pytorch
+          self.xpu = torch.xpu.is_available()
+        except:
+          print('XPU is not available')  
 
     def __enter__(self):
         """
@@ -52,6 +58,8 @@ class Profile(contextlib.ContextDecorator):
         """
         if self.cuda:
             torch.cuda.synchronize()
+        if self.xpu:
+            torch.xpu.synchronize()         
         return time.time()
 
 
