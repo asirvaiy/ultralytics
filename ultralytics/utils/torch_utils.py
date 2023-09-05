@@ -87,6 +87,7 @@ def select_device(device='', batch=0, newline=False, verbose=True):
                              f"\nos.environ['CUDA_VISIBLE_DEVICES']: {visible}\n"
                              f'{install}')
     try: 
+        import intel_extension_for_pytorch
         if not cpu and not mps and torch.xpu.is_available():  # prefer GPU if available
           s += 'XPU\n'
           arg = 'xpu:0'    
@@ -119,6 +120,15 @@ def time_sync():
     """PyTorch-accurate time."""
     if torch.cuda.is_available():
         torch.cuda.synchronize()
+    xpu = False
+    try:
+      import intel_extension_for_pytorch
+      self.xpu = torch.xpu.is_available()
+    except:
+      print('XPU is not available')
+    
+    if xpu:
+      torch.xpu.synchronize()             
     return time.time()
 
 
